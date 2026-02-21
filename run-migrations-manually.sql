@@ -1,0 +1,159 @@
+-- Ручное создание таблиц через SQL
+-- Выполните этот скрипт в MySQL Workbench или другом клиенте
+-- После выполнения удалите запись из таблицы migrations, если она там есть
+
+USE all_shops;
+
+-- Удаление таблицы migrations, если она была создана частично
+DROP TABLE IF EXISTS migrations;
+
+-- Создание таблицы shops
+CREATE TABLE IF NOT EXISTS shops (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  type ENUM('clothing', 'grocery', 'general') DEFAULT 'general',
+  address VARCHAR(500),
+  phone VARCHAR(50),
+  email VARCHAR(255),
+  isActive BOOLEAN DEFAULT TRUE,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL
+);
+
+-- Создание таблицы users
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(255) NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL,
+  role ENUM('seller', 'shop_owner', 'admin_of_app') NOT NULL,
+  fullName VARCHAR(255),
+  email VARCHAR(255),
+  phone VARCHAR(50),
+  isActive BOOLEAN DEFAULT TRUE,
+  shopId INT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE SET NULL
+);
+
+-- Создание таблицы shop_settings
+CREATE TABLE IF NOT EXISTS shop_settings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  shopId INT NOT NULL,
+  enableSizes BOOLEAN DEFAULT TRUE,
+  enableWeight BOOLEAN DEFAULT TRUE,
+  enableBarcode BOOLEAN DEFAULT TRUE,
+  enableCategories BOOLEAN DEFAULT TRUE,
+  customSettings JSON,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE
+);
+
+-- Создание таблицы products
+CREATE TABLE IF NOT EXISTS products (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  barcode VARCHAR(255) UNIQUE,
+  category VARCHAR(255),
+  purchasePrice DECIMAL(10, 2) NOT NULL,
+  quantity INT DEFAULT 0,
+  size VARCHAR(50),
+  weight DECIMAL(10, 2),
+  shopId INT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE,
+  INDEX IDX_PRODUCTS_SHOP_ID (shopId),
+  INDEX IDX_PRODUCTS_BARCODE (barcode)
+);
+
+-- Создание таблицы sales
+CREATE TABLE IF NOT EXISTS sales (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  totalAmount DECIMAL(10, 2) NOT NULL,
+  sellerId INT NOT NULL,
+  shopId INT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (sellerId) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE RESTRICT,
+  INDEX IDX_SALES_SHOP_ID (shopId),
+  INDEX IDX_SALES_SELLER_ID (sellerId),
+  INDEX IDX_SALES_CREATED_AT (createdAt)
+);
+
+-- Создание таблицы sale_items
+CREATE TABLE IF NOT EXISTS sale_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  saleId INT NOT NULL,
+  productId INT NOT NULL,
+  quantity INT NOT NULL,
+  salePrice DECIMAL(10, 2) NOT NULL,
+  totalPrice DECIMAL(10, 2) NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (saleId) REFERENCES sales(id) ON DELETE CASCADE,
+  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+-- Создание таблицы expenses
+CREATE TABLE IF NOT EXISTS expenses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  amount DECIMAL(10, 2) NOT NULL,
+  description TEXT,
+  category VARCHAR(255),
+  shopId INT NOT NULL,
+  userId INT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE RESTRICT,
+  INDEX IDX_EXPENSES_SHOP_ID (shopId),
+  INDEX IDX_EXPENSES_CREATED_AT (createdAt)
+);
+
+-- Создание таблицы inventories
+CREATE TABLE IF NOT EXISTS inventories (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  shopId INT NOT NULL,
+  userId INT NOT NULL,
+  notes TEXT,
+  isCompleted BOOLEAN DEFAULT FALSE,
+  completedAt DATETIME NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+-- Создание таблицы inventory_items
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  inventoryId INT NOT NULL,
+  productId INT NOT NULL,
+  expectedQuantity INT NOT NULL,
+  actualQuantity INT NOT NULL,
+  difference INT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (inventoryId) REFERENCES inventories(id) ON DELETE CASCADE,
+  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+-- Создание таблицы migrations для TypeORM (если нужно)
+CREATE TABLE IF NOT EXISTS migrations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  timestamp BIGINT NOT NULL,
+  name VARCHAR(255) NOT NULL
+);
