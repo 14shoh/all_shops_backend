@@ -6,9 +6,10 @@ import { Sale } from '../sales/entities/sale.entity';
 import { SaleItem } from '../sales/entities/sale-item.entity';
 import { Expense } from '../expenses/entities/expense.entity';
 import { Product } from '../products/entities/product.entity';
+import { Shop } from '../shops/entities/shop.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Sale, SaleItem, Expense, Product])],
+  imports: [TypeOrmModule.forFeature([Sale, SaleItem, Expense, Product, Shop])],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],
   exports: [AnalyticsService],

@@ -11,6 +11,7 @@ import { User, UserRole } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthService } from '../auth/auth.service';
+import { LogsService } from '../logs/logs.service';
 
 @Injectable()
 export class UsersService {
@@ -18,6 +19,7 @@ export class UsersService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private authService: AuthService,
+    private logsService: LogsService,
   ) {}
 
   async create(createUserDto: CreateUserDto, adminId: number) {
@@ -67,6 +69,8 @@ export class UsersService {
     });
 
     const savedUser = await this.userRepository.save(user);
+
+    this.logsService.log(adminId, 'create_user', `Создан пользователь "${savedUser.username}" (роль: ${savedUser.role})`).catch(() => {});
 
     // Возвращаем пользователя с оригинальным паролем (только при создании)
     return {
@@ -171,7 +175,9 @@ export class UsersService {
 
     const user = await this.findOne(id);
     user.isActive = false;
-    return this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
+    this.logsService.log(adminId, 'block_user', `Заблокирован пользователь "${user.username}" (ID ${id})`).catch(() => {});
+    return saved;
   }
 
   async unblock(id: number, adminId: number): Promise<User> {
@@ -185,7 +191,9 @@ export class UsersService {
 
     const user = await this.findOne(id);
     user.isActive = true;
-    return this.userRepository.save(user);
+    const saved = await this.userRepository.save(user);
+    this.logsService.log(adminId, 'unblock_user', `Разблокирован пользователь "${user.username}" (ID ${id})`).catch(() => {});
+    return saved;
   }
 
   async remove(id: number, adminId: number): Promise<void> {
@@ -198,7 +206,9 @@ export class UsersService {
     }
 
     const user = await this.findOne(id);
+    const username = user.username;
     await this.userRepository.softDelete(id);
+    this.logsService.log(adminId, 'delete_user', `Удалён пользователь "${username}" (ID ${id})`).catch(() => {});
   }
 
   async regenerateCredentials(id: number, adminId: number) {
@@ -228,5 +238,11 @@ export class UsersService {
       password: credentials.password,
       role: user.role,
     };
+  }
+
+  // Оптимизированная статистика для дашборда админ панели
+  async getDashboardStats() {
+    const totalUsers = await this.userRepository.count();
+    return { totalUsers };
   }
 }

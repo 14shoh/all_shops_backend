@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Delete,
   UseGuards,
   ParseIntPipe,
   Query,
@@ -39,6 +40,17 @@ export class SalesController {
     @Query() query: FindSalesDto,
     @CurrentUser() user: any,
   ) {
+    console.log('📥 Запрос продаж от пользователя:', {
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      shopId: user.shopId,
+      sellerId: user.role === UserRole.SELLER ? user.id : undefined,
+      scope: query.scope,
+      queryPage: query.page,
+      queryLimit: query.limit,
+    });
+    
     return this.salesService.findAll(
       query,
       user.role,
@@ -80,6 +92,20 @@ export class SalesController {
     );
   }
 
+  @Get('deleted/statistics')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SHOP_OWNER, UserRole.ADMIN)
+  getDeletedStatistics(
+    @Query('shopId', ParseIntPipe) shopId: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.salesService.getDeletedStatistics(
+      shopId,
+      user.role,
+      user.shopId,
+    );
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.salesService.findOne(
@@ -87,6 +113,17 @@ export class SalesController {
       user.role,
       user.shopId,
       user.role === UserRole.SELLER ? user.id : undefined,
+    );
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SELLER, UserRole.SHOP_OWNER, UserRole.ADMIN)
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.salesService.remove(
+      id,
+      user.role,
+      user.shopId,
     );
   }
 }

@@ -105,11 +105,13 @@ export class ProductsService {
     findProductsDto: FindProductsDto,
     userRole: UserRole,
     userShopId?: number,
-  ): Promise<Product[]> {
+  ): Promise<{ data: Product[]; total: number; page: number; limit: number; totalPages: number }> {
     console.log('🔍 Поиск товаров:', {
       userRole,
       userShopId,
       queryShopId: findProductsDto.shopId,
+      page: findProductsDto.page,
+      limit: findProductsDto.limit,
     });
     
     const where: any = {};
@@ -130,39 +132,55 @@ export class ProductsService {
       where.category = findProductsDto.category;
     }
 
+    const page = findProductsDto.page || 1;
+    const limit = findProductsDto.limit || 50;
+    const skip = (page - 1) * limit;
+
+    let queryBuilder = this.productRepository.createQueryBuilder('product')
+      .leftJoinAndSelect('product.shop', 'shop')
+      .where(where)
+      .andWhere('product.deletedAt IS NULL'); // Явная фильтрация удаленных записей
+
     if (findProductsDto.search) {
-      return this.productRepository.find({
-        where: [
-          {
-            ...where,
-            name: Like(`%${findProductsDto.search}%`),
-          },
-          {
-            ...where,
-            barcode: Like(`%${findProductsDto.search}%`),
-          },
-        ],
-        relations: ['shop'],
-        order: { createdAt: 'DESC' },
-      });
+      queryBuilder = queryBuilder.andWhere(
+        '(product.name LIKE :search OR product.barcode LIKE :search)',
+        { search: `%${findProductsDto.search}%` }
+      );
     }
 
-    const products = await this.productRepository.find({
-      where,
-      relations: ['shop'],
-      order: { createdAt: 'DESC' },
-    });
+    // Подсчет общего количества
+    const total = await queryBuilder.getCount();
+
+    // Получение данных с пагинацией
+    const products = await queryBuilder
+      .orderBy('product.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getMany();
     
-    console.log(`✅ Найдено товаров: ${products.length}`);
+    console.log(`✅ Найдено товаров: ${products.length} из ${total} (страница ${page}, лимит ${limit})`);
     if (products.length > 0) {
       console.log('📦 Первый товар:', {
         id: products[0].id,
         name: products[0].name,
         shopId: products[0].shopId,
       });
+      console.log('📦 Последний товар:', {
+        id: products[products.length - 1].id,
+        name: products[products.length - 1].name,
+        shopId: products[products.length - 1].shopId,
+      });
+    } else {
+      console.log('⚠️ Товары не найдены! Проверьте фильтры:', where);
     }
     
-    return products;
+    return {
+      data: products,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(
@@ -347,5 +365,13 @@ export class ProductsService {
       relations: ['shop'],
       order: { quantity: 'ASC' },
     });
+  }
+
+  // Оптимизированная статистика для дашборда админ панели
+  async getDashboardStats() {
+    const totalProducts = await this.productRepository.count({
+      where: { deletedAt: null as any },
+    });
+    return { totalProducts };
   }
 }

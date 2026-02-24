@@ -1,4 +1,4 @@
-import { IsOptional, IsBoolean } from 'class-validator';
+import { IsOptional, IsBoolean, IsString, MaxLength } from 'class-validator';
 
 export class UpdateShopSettingsDto {
   @IsOptional()
@@ -16,4 +16,9 @@ export class UpdateShopSettingsDto {
   @IsOptional()
   @IsBoolean()
   enableCategories?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  paymentAccountNumber?: string;
 }

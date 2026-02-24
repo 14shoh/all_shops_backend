@@ -32,6 +32,14 @@ DB_DATABASE=all_shops
 npm run migration:run
 ```
 
+### Полная пересборка схемы (удалить все таблицы и создать заново)
+Если база "застряла" на старой структуре:
+1) Выполните `run-migrations-manually.sql` в MySQL клиенте (скрипт сначала удаляет старые таблицы, затем создает новую схему).
+2) После этого снова запустите:
+```bash
+npm run migration:run
+```
+
 ### Откатить последнюю миграцию
 ```bash
 npm run migration:revert
@@ -61,6 +69,10 @@ SHOW TABLES;
 - expenses
 - inventories
 - inventory_items
+- customer_debts
+- supplier_debts
+- logs
+- categories
 
 ## Важно
 

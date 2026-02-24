@@ -1,14 +1,27 @@
--- Ручное создание таблиц через SQL
--- Выполните этот скрипт в MySQL Workbench или другом клиенте
--- После выполнения удалите запись из таблицы migrations, если она там есть
+-- Полная схема БД (обновленная под текущий код backend)
+-- Выполните этот скрипт в MySQL Workbench/DBeaver при ручной сборке.
+-- Рекомендуемый путь: npm run migration:run (а этот файл как fallback).
 
 USE all_shops;
 
--- Удаление таблицы migrations, если она была создана частично
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS logs;
+DROP TABLE IF EXISTS customer_debts;
+DROP TABLE IF EXISTS supplier_debts;
+DROP TABLE IF EXISTS inventory_items;
+DROP TABLE IF EXISTS inventories;
+DROP TABLE IF EXISTS sale_items;
+DROP TABLE IF EXISTS sales;
+DROP TABLE IF EXISTS expenses;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS shop_settings;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS shops;
 DROP TABLE IF EXISTS migrations;
+SET FOREIGN_KEY_CHECKS = 1;
 
--- Создание таблицы shops
-CREATE TABLE IF NOT EXISTS shops (
+CREATE TABLE shops (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   description TEXT,
@@ -22,8 +35,7 @@ CREATE TABLE IF NOT EXISTS shops (
   deletedAt DATETIME NULL
 );
 
--- Создание таблицы users
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(255) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
@@ -39,14 +51,14 @@ CREATE TABLE IF NOT EXISTS users (
   FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE SET NULL
 );
 
--- Создание таблицы shop_settings
-CREATE TABLE IF NOT EXISTS shop_settings (
+CREATE TABLE shop_settings (
   id INT AUTO_INCREMENT PRIMARY KEY,
   shopId INT NOT NULL,
   enableSizes BOOLEAN DEFAULT TRUE,
   enableWeight BOOLEAN DEFAULT TRUE,
   enableBarcode BOOLEAN DEFAULT TRUE,
   enableCategories BOOLEAN DEFAULT TRUE,
+  paymentAccountNumber VARCHAR(50),
   customSettings JSON,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -54,11 +66,10 @@ CREATE TABLE IF NOT EXISTS shop_settings (
   FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE
 );
 
--- Создание таблицы products
-CREATE TABLE IF NOT EXISTS products (
+CREATE TABLE products (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
-  barcode VARCHAR(255) UNIQUE,
+  barcode VARCHAR(255),
   category VARCHAR(255),
   purchasePrice DECIMAL(10, 2) NOT NULL,
   quantity INT DEFAULT 0,
@@ -68,13 +79,10 @@ CREATE TABLE IF NOT EXISTS products (
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deletedAt DATETIME NULL,
-  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE,
-  INDEX IDX_PRODUCTS_SHOP_ID (shopId),
-  INDEX IDX_PRODUCTS_BARCODE (barcode)
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE
 );
 
--- Создание таблицы sales
-CREATE TABLE IF NOT EXISTS sales (
+CREATE TABLE sales (
   id INT AUTO_INCREMENT PRIMARY KEY,
   totalAmount DECIMAL(10, 2) NOT NULL,
   sellerId INT NOT NULL,
@@ -83,14 +91,10 @@ CREATE TABLE IF NOT EXISTS sales (
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deletedAt DATETIME NULL,
   FOREIGN KEY (sellerId) REFERENCES users(id) ON DELETE RESTRICT,
-  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE RESTRICT,
-  INDEX IDX_SALES_SHOP_ID (shopId),
-  INDEX IDX_SALES_SELLER_ID (sellerId),
-  INDEX IDX_SALES_CREATED_AT (createdAt)
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE RESTRICT
 );
 
--- Создание таблицы sale_items
-CREATE TABLE IF NOT EXISTS sale_items (
+CREATE TABLE sale_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   saleId INT NOT NULL,
   productId INT NOT NULL,
@@ -104,8 +108,7 @@ CREATE TABLE IF NOT EXISTS sale_items (
   FOREIGN KEY (productId) REFERENCES products(id) ON DELETE RESTRICT
 );
 
--- Создание таблицы expenses
-CREATE TABLE IF NOT EXISTS expenses (
+CREATE TABLE expenses (
   id INT AUTO_INCREMENT PRIMARY KEY,
   amount DECIMAL(10, 2) NOT NULL,
   description TEXT,
@@ -116,13 +119,10 @@ CREATE TABLE IF NOT EXISTS expenses (
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deletedAt DATETIME NULL,
   FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE,
-  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE RESTRICT,
-  INDEX IDX_EXPENSES_SHOP_ID (shopId),
-  INDEX IDX_EXPENSES_CREATED_AT (createdAt)
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE RESTRICT
 );
 
--- Создание таблицы inventories
-CREATE TABLE IF NOT EXISTS inventories (
+CREATE TABLE inventories (
   id INT AUTO_INCREMENT PRIMARY KEY,
   shopId INT NOT NULL,
   userId INT NOT NULL,
@@ -136,8 +136,7 @@ CREATE TABLE IF NOT EXISTS inventories (
   FOREIGN KEY (userId) REFERENCES users(id) ON DELETE RESTRICT
 );
 
--- Создание таблицы inventory_items
-CREATE TABLE IF NOT EXISTS inventory_items (
+CREATE TABLE inventory_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   inventoryId INT NOT NULL,
   productId INT NOT NULL,
@@ -151,8 +150,90 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   FOREIGN KEY (productId) REFERENCES products(id) ON DELETE RESTRICT
 );
 
--- Создание таблицы migrations для TypeORM (если нужно)
-CREATE TABLE IF NOT EXISTS migrations (
+CREATE TABLE customer_debts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  customerName VARCHAR(255) NOT NULL,
+  phone VARCHAR(50),
+  amount DECIMAL(10, 2) NOT NULL,
+  paidAmount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  remainingAmount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  description TEXT,
+  debtDate DATE NOT NULL,
+  shopId INT NOT NULL,
+  userId INT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE supplier_debts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  supplierName VARCHAR(255) NOT NULL,
+  totalDebt DECIMAL(10, 2) NOT NULL,
+  paidAmount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  remainingAmount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  shopId INT NOT NULL,
+  userId INT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NULL,
+  action VARCHAR(64) NOT NULL,
+  details TEXT NOT NULL,
+  ipAddress VARCHAR(45),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE categories (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  icon VARCHAR(10),
+  color VARCHAR(20) DEFAULT '#6366f1',
+  parentId INT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deletedAt DATETIME NULL,
+  FOREIGN KEY (parentId) REFERENCES categories(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IDX_PRODUCTS_SHOP_ID ON products (shopId);
+CREATE INDEX IDX_PRODUCTS_BARCODE_SHOP_SIZE ON products (barcode, shopId, size);
+CREATE INDEX IDX_PRODUCTS_SHOP_CATEGORY ON products (shopId, category);
+
+CREATE INDEX IDX_SALES_SHOP_ID ON sales (shopId);
+CREATE INDEX IDX_SALES_SELLER_ID ON sales (sellerId);
+CREATE INDEX IDX_SALES_CREATED_AT ON sales (createdAt);
+CREATE INDEX IDX_SALES_SHOP_CREATED_AT ON sales (shopId, createdAt);
+
+CREATE INDEX IDX_EXPENSES_SHOP_ID ON expenses (shopId);
+CREATE INDEX IDX_EXPENSES_CREATED_AT ON expenses (createdAt);
+CREATE INDEX IDX_EXPENSES_SHOP_CREATED_AT ON expenses (shopId, createdAt);
+
+CREATE INDEX IDX_INVENTORIES_SHOP_CREATED_AT ON inventories (shopId, createdAt);
+CREATE INDEX IDX_INVENTORY_ITEMS_INVENTORY_ID ON inventory_items (inventoryId);
+CREATE INDEX IDX_SALE_ITEMS_SALE_ID ON sale_items (saleId);
+CREATE INDEX IDX_SALE_ITEMS_PRODUCT_ID ON sale_items (productId);
+CREATE INDEX IDX_USERS_SHOP_ID ON users (shopId);
+CREATE INDEX IDX_USERS_ROLE ON users (role);
+CREATE INDEX IDX_CUSTOMER_DEBTS_SHOP_ID ON customer_debts (shopId);
+CREATE INDEX IDX_CUSTOMER_DEBTS_USER_ID ON customer_debts (userId);
+CREATE INDEX IDX_CUSTOMER_DEBTS_DATE ON customer_debts (debtDate);
+CREATE INDEX IDX_SUPPLIER_DEBTS_SHOP_ID ON supplier_debts (shopId);
+CREATE INDEX IDX_SUPPLIER_DEBTS_USER_ID ON supplier_debts (userId);
+
+CREATE TABLE migrations (
   id INT AUTO_INCREMENT PRIMARY KEY,
   timestamp BIGINT NOT NULL,
   name VARCHAR(255) NOT NULL

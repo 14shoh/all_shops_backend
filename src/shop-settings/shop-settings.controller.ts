@@ -30,7 +30,7 @@ export class ShopSettingsController {
 
   @Patch(':shopId')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.SHOP_OWNER, UserRole.ADMIN)
   updateSettings(
     @Param('shopId', ParseIntPipe) shopId: number,
     @Body() updateShopSettingsDto: UpdateShopSettingsDto,
@@ -41,5 +41,14 @@ export class ShopSettingsController {
       updateShopSettingsDto,
       user.role,
     );
+  }
+
+  @Get(':shopId/payment-account')
+  getPaymentAccount(
+    @Param('shopId', ParseIntPipe) shopId: number,
+    @CurrentUser() user: any,
+  ) {
+    // Разрешаем доступ для всех авторизованных пользователей (seller и admin)
+    return this.shopSettingsService.getPaymentAccount(shopId);
   }
 }

@@ -20,6 +20,10 @@ export class CreateSaleItemDto {
   @IsNumber()
   @Min(0)
   salePrice: number;
+
+  @IsNumber()
+  @Min(0)
+  totalPrice?: number; // клиент может отправить готовый totalPrice (для кг/л)
 }
 
 export class CreateSaleDto {

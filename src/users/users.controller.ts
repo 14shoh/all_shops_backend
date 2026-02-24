@@ -44,6 +44,11 @@ export class UsersController {
     return this.usersService.findByShop(shopId);
   }
 
+  @Get('dashboard/stats')
+  getDashboardStats() {
+    return this.usersService.getDashboardStats();
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.findOne(id);

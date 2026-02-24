@@ -23,6 +23,9 @@ export class ShopSettings extends BaseEntity {
   @Column({ default: true })
   enableCategories: boolean;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  paymentAccountNumber: string | null; // Номер счета/телефона для QR оплаты
+
   @Column({ type: 'json', nullable: true })
   customSettings: Record<string, any>;
 }

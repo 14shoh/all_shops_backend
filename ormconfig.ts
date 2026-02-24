@@ -14,4 +14,10 @@ export default new DataSource({
   migrations: [__dirname + '/src/migrations/*{.ts,.js}'],
   synchronize: false,
   logging: true,
+  extra: {
+    connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '30', 10),
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+  },
 });

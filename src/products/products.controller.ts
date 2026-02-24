@@ -16,6 +16,8 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { FindProductsDto } from './dto/find-products.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../users/entities/user.entity';
 
@@ -54,6 +56,13 @@ export class ProductsController {
       user.role,
       user.shopId,
     );
+  }
+
+  @Get('dashboard/stats')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getDashboardStats() {
+    return this.productsService.getDashboardStats();
   }
 
   @Get('categories')

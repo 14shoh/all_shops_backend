@@ -13,6 +13,7 @@ import {
 import { ShopsService } from './shops.service';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
+import { UpdateShopPhoneDto } from './dto/update-shop-phone.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -27,8 +28,8 @@ export class ShopsController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
-  create(@Body() createShopDto: CreateShopDto) {
-    return this.shopsService.create(createShopDto);
+  create(@Body() createShopDto: CreateShopDto, @CurrentUser() user: any) {
+    return this.shopsService.create(createShopDto, user?.id);
   }
 
   @Get()
@@ -43,6 +44,13 @@ export class ShopsController {
     return this.shopsService.findActive();
   }
 
+  @Get('dashboard/stats')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getDashboardStats() {
+    return this.shopsService.getDashboardStats();
+  }
+
   @Get(':id')
   findOne(
     @Param('id', ParseIntPipe) id: number,
@@ -53,6 +61,34 @@ export class ShopsController {
       throw new ForbiddenException('Нет доступа к этому магазину');
     }
     return this.shopsService.findOne(id);
+  }
+
+  // Номер телефона магазина для QR (доступен авторизованным пользователям своего магазина)
+  @Get(':id/phone')
+  async getShopPhone(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    // seller / shop_owner могут получить только свой магазин; admin_of_app может любой
+    if (user.role !== UserRole.ADMIN && user.shopId !== id) {
+      throw new ForbiddenException('Нет доступа к телефону этого магазина');
+    }
+    return this.shopsService.getShopPhone(id);
+  }
+
+  @Patch(':id/phone')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SHOP_OWNER, UserRole.ADMIN)
+  async updateShopPhone(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateShopPhoneDto,
+    @CurrentUser() user: any,
+  ) {
+    // Владелец может менять только свой магазин
+    if (user.role === UserRole.SHOP_OWNER && user.shopId !== id) {
+      throw new ForbiddenException('Нет доступа к этому магазину');
+    }
+    return this.shopsService.updateShopPhone(id, dto.phone);
   }
 
   @Get(':id/statistics')
@@ -75,28 +111,29 @@ export class ShopsController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateShopDto: UpdateShopDto,
+    @CurrentUser() user: any,
   ) {
-    return this.shopsService.update(id, updateShopDto);
+    return this.shopsService.update(id, updateShopDto, user?.id);
   }
 
   @Patch(':id/block')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
-  block(@Param('id', ParseIntPipe) id: number) {
-    return this.shopsService.block(id);
+  block(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.shopsService.block(id, user?.id);
   }
 
   @Patch(':id/unblock')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
-  unblock(@Param('id', ParseIntPipe) id: number) {
-    return this.shopsService.unblock(id);
+  unblock(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.shopsService.unblock(id, user?.id);
   }
 
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.shopsService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.shopsService.remove(id, user?.id);
   }
 }

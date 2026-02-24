@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { User, UserRole } from '../users/entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { LogsService } from '../logs/logs.service';
 
 @Injectable()
 export class AuthService {
@@ -17,6 +18,7 @@ export class AuthService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private jwtService: JwtService,
+    private logsService: LogsService,
   ) {}
 
   async validateUser(username: string, password: string): Promise<any> {
@@ -42,8 +44,10 @@ export class AuthService {
     return result;
   }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto, ip?: string) {
     const user = await this.validateUser(loginDto.username, loginDto.password);
+
+    this.logsService.log(user.id, 'login', 'Вход в систему', ip).catch(() => {});
 
     const payload = {
       username: user.username,

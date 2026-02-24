@@ -5,7 +5,9 @@ import {
   ParseIntPipe,
   Query,
   ForbiddenException,
+  UseInterceptors,
 } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -19,6 +21,8 @@ export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get('financial')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(30_000)
   @UseGuards(RolesGuard)
   @Roles(UserRole.SHOP_OWNER, UserRole.ADMIN)
   getFinancialAnalytics(
@@ -40,6 +44,8 @@ export class AnalyticsController {
   }
 
   @Get('top-products')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(30_000)
   @UseGuards(RolesGuard)
   @Roles(UserRole.SHOP_OWNER, UserRole.ADMIN)
   getTopSellingProducts(
@@ -62,6 +68,8 @@ export class AnalyticsController {
   }
 
   @Get('unsold-products')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60_000)
   @UseGuards(RolesGuard)
   @Roles(UserRole.SHOP_OWNER, UserRole.ADMIN)
   getUnsoldProducts(
@@ -84,6 +92,8 @@ export class AnalyticsController {
   }
 
   @Get('sales')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(30_000)
   @UseGuards(RolesGuard)
   @Roles(UserRole.SHOP_OWNER, UserRole.ADMIN)
   getSalesAnalytics(
@@ -101,5 +111,37 @@ export class AnalyticsController {
       user.role,
       user.shopId,
     );
+  }
+
+  // ─── Admin panel: global analytics (admin_of_app only) ───────────────────
+  @Get('admin/sales')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(30_000)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getAdminSales(@Query('period') period: 'week' | 'month' | 'year' = 'week') {
+    return this.analyticsService.getAdminSalesByPeriod(period);
+  }
+
+  @Get('admin/shops')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(30_000)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getAdminShops(@Query('period') period: 'week' | 'month' | 'year' = 'week') {
+    return this.analyticsService.getAdminShopsPerformance(period);
+  }
+
+  @Get('admin/top-products')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(30_000)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getAdminTopProducts(
+    @Query('period') period: 'week' | 'month' | 'year' = 'week',
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 5;
+    return this.analyticsService.getAdminTopProducts(period, limitNum);
   }
 }

@@ -28,8 +28,10 @@ export class Shop extends BaseEntity {
   @Column({ nullable: true })
   address: string;
 
-  @Column({ nullable: true })
-  phone: string;
+  // ВАЖНО: для union-типа обязательно задаём `type`, иначе reflect-metadata даст "Object"
+  // и TypeORM (MySQL) упадёт с DataTypeNotSupportedError.
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  phone: string | null;
 
   @Column({ nullable: true })
   email: string;

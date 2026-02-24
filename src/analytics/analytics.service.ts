@@ -4,11 +4,12 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual } from 'typeorm';
+import { Repository, Between } from 'typeorm';
 import { Sale } from '../sales/entities/sale.entity';
 import { SaleItem } from '../sales/entities/sale-item.entity';
 import { Expense } from '../expenses/entities/expense.entity';
 import { Product } from '../products/entities/product.entity';
+import { Shop } from '../shops/entities/shop.entity';
 import { UserRole } from '../users/entities/user.entity';
 
 @Injectable()
@@ -22,6 +23,8 @@ export class AnalyticsService {
     private expenseRepository: Repository<Expense>,
     @InjectRepository(Product)
     private productRepository: Repository<Product>,
+    @InjectRepository(Shop)
+    private shopRepository: Repository<Shop>,
   ) {}
 
   async getFinancialAnalytics(
@@ -56,30 +59,36 @@ export class AnalyticsService {
     }
 
     // Получаем доходы (продажи)
-    const sales = await this.saleRepository.find({
-      where: {
-        shopId,
-        createdAt: Between(startDate, endDate),
-      },
-    });
+    const salesAgg = await this.saleRepository
+      .createQueryBuilder('sale')
+      .select('COALESCE(SUM(sale.totalAmount), 0)', 'revenue')
+      .addSelect('COUNT(*)', 'salesCount')
+      .where('sale.shopId = :shopId', { shopId })
+      .andWhere('sale.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
+      .getRawOne<{ revenue: string; salesCount: string }>();
 
-    const revenue = sales.reduce(
-      (sum, sale) => sum + Number(sale.totalAmount),
-      0,
-    );
+    const revenue = Number(parseFloat(salesAgg?.revenue ?? '0').toFixed(2));
+    const salesCount = parseInt(salesAgg?.salesCount ?? '0', 10);
 
     // Получаем расходы
-    const expenses = await this.expenseRepository.find({
-      where: {
-        shopId,
-        createdAt: Between(startDate, endDate),
-      },
-    });
+    const expensesAgg = await this.expenseRepository
+      .createQueryBuilder('expense')
+      .select('COALESCE(SUM(expense.amount), 0)', 'expenses')
+      .addSelect('COUNT(*)', 'expensesCount')
+      .where('expense.shopId = :shopId', { shopId })
+      .andWhere('expense.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
+      .getRawOne<{ expenses: string; expensesCount: string }>();
 
-    const totalExpenses = expenses.reduce(
-      (sum, expense) => sum + Number(expense.amount),
-      0,
+    const totalExpenses = Number(
+      parseFloat(expensesAgg?.expenses ?? '0').toFixed(2),
     );
+    const expensesCount = parseInt(expensesAgg?.expensesCount ?? '0', 10);
 
     // Чистая прибыль
     const netProfit = revenue - totalExpenses;
@@ -88,11 +97,11 @@ export class AnalyticsService {
       period,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
-      revenue: Number(revenue.toFixed(2)),
-      expenses: Number(totalExpenses.toFixed(2)),
+      revenue,
+      expenses: totalExpenses,
       netProfit: Number(netProfit.toFixed(2)),
-      salesCount: sales.length,
-      expensesCount: expenses.length,
+      salesCount,
+      expensesCount,
     };
   }
 
@@ -147,36 +156,58 @@ export class AnalyticsService {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
 
-    // Получаем все товары магазина
-    const allProducts = await this.productRepository.find({
-      where: { shopId },
+    // Оптимизация: одним запросом на БД, без загрузки всех товаров в память
+    // Берем товары магазина, для которых не найдено ни одной продажи за последние N дней.
+    const rows = await this.productRepository
+      .createQueryBuilder('product')
+      .leftJoin(
+        SaleItem,
+        'saleItem',
+        'saleItem.productId = product.id AND saleItem.deletedAt IS NULL',
+      )
+      .leftJoin(
+        Sale,
+        'sale',
+        `sale.id = saleItem.saleId
+         AND sale.shopId = :shopId
+         AND sale.createdAt >= :cutoffDate
+         AND sale.deletedAt IS NULL`,
+        { shopId, cutoffDate },
+      )
+      .where('product.shopId = :shopId', { shopId })
+      .andWhere('product.deletedAt IS NULL')
+      .select([
+        'product.id AS id',
+        'product.name AS name',
+        'product.barcode AS barcode',
+        'product.category AS category',
+        'product.quantity AS quantity',
+        'product.purchasePrice AS purchasePrice',
+      ])
+      .groupBy('product.id')
+      .having('COUNT(sale.id) = 0')
+      .getRawMany<{
+        id: number;
+        name: string;
+        barcode: string | null;
+        category: string | null;
+        quantity: number;
+        purchasePrice: string;
+      }>();
+
+    return rows.map((p) => {
+      const purchasePrice = Number(parseFloat(p.purchasePrice ?? '0').toFixed(2));
+      const quantity = Number(p.quantity ?? 0);
+      return {
+        id: p.id,
+        name: p.name,
+        barcode: p.barcode,
+        category: p.category,
+        quantity,
+        purchasePrice,
+        totalValue: Number((purchasePrice * quantity).toFixed(2)),
+      };
     });
-
-    // Получаем товары, которые были проданы за последние N дней
-    const soldProducts = await this.saleItemRepository
-      .createQueryBuilder('saleItem')
-      .innerJoin('saleItem.sale', 'sale')
-      .where('sale.shopId = :shopId', { shopId })
-      .andWhere('sale.createdAt >= :cutoffDate', { cutoffDate })
-      .select('DISTINCT saleItem.productId', 'productId')
-      .getRawMany();
-
-    const soldProductIds = soldProducts.map((p) => p.productId);
-
-    // Находим товары, которые не продавались
-    const unsoldProducts = allProducts.filter(
-      (product) => !soldProductIds.includes(product.id),
-    );
-
-    return unsoldProducts.map((product) => ({
-      id: product.id,
-      name: product.name,
-      barcode: product.barcode,
-      category: product.category,
-      quantity: product.quantity,
-      purchasePrice: product.purchasePrice,
-      totalValue: Number((product.purchasePrice * product.quantity).toFixed(2)),
-    }));
   }
 
   async getSalesAnalytics(
@@ -199,28 +230,121 @@ export class AnalyticsService {
       where.createdAt = Between(startDate, new Date());
     }
 
-    const sales = await this.saleRepository.find({
-      where,
-      relations: ['items', 'items.product'],
-    });
+    const start = startDate ?? new Date(0);
+    const end = endDate ?? new Date();
 
-    const totalRevenue = sales.reduce(
-      (sum, sale) => sum + Number(sale.totalAmount),
-      0,
-    );
+    // Оптимизация: агрегаты считаем в MySQL (не тащим продажи и sale_items в Node.js)
+    const totals = await this.saleRepository
+      .createQueryBuilder('sale')
+      .leftJoin(SaleItem, 'saleItem', 'saleItem.saleId = sale.id AND saleItem.deletedAt IS NULL')
+      .select('COUNT(DISTINCT sale.id)', 'totalSales')
+      .addSelect('COALESCE(SUM(sale.totalAmount), 0)', 'totalRevenue')
+      .addSelect('COALESCE(SUM(saleItem.quantity), 0)', 'totalItems')
+      .where('sale.shopId = :shopId', { shopId })
+      .andWhere('sale.createdAt BETWEEN :start AND :end', { start, end })
+      .andWhere('sale.deletedAt IS NULL')
+      .getRawOne<{ totalSales: string; totalRevenue: string; totalItems: string }>();
 
-    const totalItems = sales.reduce(
-      (sum, sale) => sum + sale.items.reduce((s, item) => s + item.quantity, 0),
-      0,
-    );
+    const totalSales = parseInt(totals?.totalSales ?? '0', 10);
+    const totalRevenue = Number(parseFloat(totals?.totalRevenue ?? '0').toFixed(2));
+    const totalItems = parseInt(totals?.totalItems ?? '0', 10);
 
     return {
-      totalSales: sales.length,
-      totalRevenue: Number(totalRevenue.toFixed(2)),
+      totalSales,
+      totalRevenue,
       totalItems,
-      averageSaleAmount: sales.length > 0
-        ? Number((totalRevenue / sales.length).toFixed(2))
+      averageSaleAmount: totalSales > 0
+        ? Number((totalRevenue / totalSales).toFixed(2))
         : 0,
     };
+  }
+
+  // ─── Admin-only: global analytics for admin panel ────────────────────────
+
+  private getDateRange(period: 'week' | 'month' | 'year') {
+    const end = new Date();
+    const start = new Date();
+    switch (period) {
+      case 'week':
+        start.setDate(start.getDate() - 7);
+        break;
+      case 'month':
+        start.setMonth(start.getMonth() - 1);
+        break;
+      case 'year':
+        start.setFullYear(start.getFullYear() - 1);
+        break;
+      default:
+        start.setDate(start.getDate() - 7);
+    }
+    return { start, end };
+  }
+
+  async getAdminSalesByPeriod(period: 'week' | 'month' | 'year') {
+    const { start, end } = this.getDateRange(period);
+    const rows = await this.saleRepository
+      .createQueryBuilder('sale')
+      .select('DATE(sale.createdAt)', 'date')
+      .addSelect('COUNT(sale.id)', 'sales')
+      .addSelect('COALESCE(SUM(sale.totalAmount), 0)', 'revenue')
+      .where('sale.createdAt BETWEEN :start AND :end', { start, end })
+      .andWhere('sale.deletedAt IS NULL')
+      .groupBy('DATE(sale.createdAt)')
+      .orderBy('date', 'ASC')
+      .getRawMany<{ date: string; sales: string; revenue: string }>();
+
+    return rows.map((r) => ({
+      date: r.date,
+      sales: parseInt(r.sales, 10),
+      revenue: Number(parseFloat(r.revenue).toFixed(2)),
+    }));
+  }
+
+  async getAdminShopsPerformance(period: 'week' | 'month' | 'year') {
+    const { start, end } = this.getDateRange(period);
+    const shops = await this.shopRepository.find({
+      where: { deletedAt: undefined as any },
+      select: ['id', 'name'],
+    });
+    const result: { shopName: string; totalSales: number; revenue: number }[] = [];
+    for (const shop of shops) {
+      const agg = await this.saleRepository
+        .createQueryBuilder('sale')
+        .select('COUNT(sale.id)', 'totalSales')
+        .addSelect('COALESCE(SUM(sale.totalAmount), 0)', 'revenue')
+        .where('sale.shopId = :shopId', { shopId: shop.id })
+        .andWhere('sale.createdAt BETWEEN :start AND :end', { start, end })
+        .andWhere('sale.deletedAt IS NULL')
+        .getRawOne<{ totalSales: string; revenue: string }>();
+      result.push({
+        shopName: shop.name,
+        totalSales: parseInt(agg?.totalSales ?? '0', 10),
+        revenue: Number(parseFloat(agg?.revenue ?? '0').toFixed(2)),
+      });
+    }
+    return result.sort((a, b) => b.revenue - a.revenue);
+  }
+
+  async getAdminTopProducts(period: 'week' | 'month' | 'year', limit: number = 5) {
+    const { start, end } = this.getDateRange(period);
+    const rows = await this.saleItemRepository
+      .createQueryBuilder('saleItem')
+      .innerJoin('saleItem.sale', 'sale')
+      .innerJoin('saleItem.product', 'product')
+      .where('sale.createdAt BETWEEN :start AND :end', { start, end })
+      .andWhere('sale.deletedAt IS NULL')
+      .select('product.name', 'name')
+      .addSelect('SUM(saleItem.quantity)', 'quantity')
+      .addSelect('SUM(saleItem.totalPrice)', 'revenue')
+      .groupBy('product.id')
+      .orderBy('quantity', 'DESC')
+      .limit(limit)
+      .getRawMany<{ name: string; quantity: string; revenue: string }>();
+
+    return rows.map((r) => ({
+      name: r.name,
+      quantity: parseInt(r.quantity, 10),
+      revenue: Number(parseFloat(r.revenue).toFixed(2)),
+    }));
   }
 }

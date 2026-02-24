@@ -9,6 +9,7 @@ import { Shop } from './entities/shop.entity';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
 import { ShopSettings } from '../shop-settings/entities/shop-settings.entity';
+import { LogsService } from '../logs/logs.service';
 
 @Injectable()
 export class ShopsService {
@@ -17,9 +18,10 @@ export class ShopsService {
     private shopRepository: Repository<Shop>,
     @InjectRepository(ShopSettings)
     private shopSettingsRepository: Repository<ShopSettings>,
+    private logsService: LogsService,
   ) {}
 
-  async create(createShopDto: CreateShopDto): Promise<Shop> {
+  async create(createShopDto: CreateShopDto, userId?: number): Promise<Shop> {
     // Проверка на дубликат имени
     const existingShop = await this.shopRepository.findOne({
       where: { name: createShopDto.name },
@@ -43,20 +45,23 @@ export class ShopsService {
 
     await this.shopSettingsRepository.save(defaultSettings);
 
+    if (userId) {
+      this.logsService.log(userId, 'create_shop', `Создан магазин "${savedShop.name}"`).catch(() => {});
+    }
     return savedShop;
   }
 
   async findAll(): Promise<Shop[]> {
+    // Убираем relations для оптимизации - админ панели не нужны все товары и пользователи
     return this.shopRepository.find({
-      relations: ['users', 'products'],
       order: { createdAt: 'DESC' },
     });
   }
 
   async findActive(): Promise<Shop[]> {
+    // Убираем relations для оптимизации
     return this.shopRepository.find({
       where: { isActive: true },
-      relations: ['users', 'products'],
       order: { createdAt: 'DESC' },
     });
   }
@@ -74,7 +79,36 @@ export class ShopsService {
     return shop;
   }
 
-  async update(id: number, updateShopDto: UpdateShopDto): Promise<Shop> {
+  async getShopPhone(id: number): Promise<{ phone: string | null }> {
+    const shop = await this.shopRepository.findOne({
+      where: { id },
+      select: ['id', 'phone'],
+    });
+
+    if (!shop) {
+      throw new NotFoundException(`Магазин с ID ${id} не найден`);
+    }
+
+    return { phone: shop.phone ?? null };
+  }
+
+  async updateShopPhone(id: number, phone?: string): Promise<{ phone: string | null }> {
+    const shop = await this.shopRepository.findOne({
+      where: { id },
+      select: ['id', 'phone'],
+    });
+
+    if (!shop) {
+      throw new NotFoundException(`Магазин с ID ${id} не найден`);
+    }
+
+    const normalized = phone == null ? '' : phone.toString().trim();
+    shop.phone = normalized.length > 0 ? normalized : null;
+    const saved = await this.shopRepository.save(shop);
+    return { phone: saved.phone ?? null };
+  }
+
+  async update(id: number, updateShopDto: UpdateShopDto, userId?: number): Promise<Shop> {
     const shop = await this.findOne(id);
 
     // Проверка на дубликат имени при обновлении
@@ -89,24 +123,40 @@ export class ShopsService {
     }
 
     Object.assign(shop, updateShopDto);
-    return this.shopRepository.save(shop);
+    const saved = await this.shopRepository.save(shop);
+    if (userId) {
+      this.logsService.log(userId, 'update_shop', `Обновлён магазин "${saved.name}" (ID ${id})`).catch(() => {});
+    }
+    return saved;
   }
 
-  async block(id: number): Promise<Shop> {
+  async block(id: number, userId?: number): Promise<Shop> {
     const shop = await this.findOne(id);
     shop.isActive = false;
-    return this.shopRepository.save(shop);
+    const saved = await this.shopRepository.save(shop);
+    if (userId) {
+      this.logsService.log(userId, 'block_shop', `Заблокирован магазин "${shop.name}" (ID ${id})`).catch(() => {});
+    }
+    return saved;
   }
 
-  async unblock(id: number): Promise<Shop> {
+  async unblock(id: number, userId?: number): Promise<Shop> {
     const shop = await this.findOne(id);
     shop.isActive = true;
-    return this.shopRepository.save(shop);
+    const saved = await this.shopRepository.save(shop);
+    if (userId) {
+      this.logsService.log(userId, 'unblock_shop', `Разблокирован магазин "${shop.name}" (ID ${id})`).catch(() => {});
+    }
+    return saved;
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: number, userId?: number): Promise<void> {
     const shop = await this.findOne(id);
+    const name = shop.name;
     await this.shopRepository.softDelete(id);
+    if (userId) {
+      this.logsService.log(userId, 'delete_shop', `Удалён магазин "${name}" (ID ${id})`).catch(() => {});
+    }
   }
 
   async getShopStatistics(id: number) {
@@ -137,6 +187,19 @@ export class ShopsService {
       totalQuantity,
       totalValue: Number(totalValue.toFixed(2)),
       totalUsers,
+    };
+  }
+
+  // Оптимизированная статистика для дашборда админ панели
+  async getDashboardStats() {
+    const [totalShops, activeShops] = await Promise.all([
+      this.shopRepository.count(),
+      this.shopRepository.count({ where: { isActive: true } }),
+    ]);
+
+    return {
+      totalShops,
+      activeShops,
     };
   }
 }

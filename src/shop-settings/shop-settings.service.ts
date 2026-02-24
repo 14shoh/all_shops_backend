@@ -19,13 +19,22 @@ export class ShopSettingsService {
     shopId: number,
     userRole: UserRole,
   ): Promise<ShopSettings> {
-    const settings = await this.shopSettingsRepository.findOne({
+    let settings = await this.shopSettingsRepository.findOne({
       where: { shopId },
       relations: ['shop'],
     });
 
+    // Если настройки не найдены, создаем их с дефолтными значениями
     if (!settings) {
-      throw new NotFoundException(`Настройки для магазина с ID ${shopId} не найдены`);
+      settings = this.shopSettingsRepository.create({
+        shopId,
+        enableSizes: true,
+        enableWeight: true,
+        enableBarcode: true,
+        enableCategories: true,
+        paymentAccountNumber: null,
+      });
+      settings = await this.shopSettingsRepository.save(settings);
     }
 
     return settings;
@@ -36,14 +45,54 @@ export class ShopSettingsService {
     updateData: Partial<ShopSettings>,
     userRole: UserRole,
   ): Promise<ShopSettings> {
-    // Только администратор может изменять настройки
-    if (userRole !== UserRole.ADMIN) {
-      throw new ForbiddenException('Только администратор может изменять настройки магазина');
+    // Изменять настройки может владелец магазина или администратор приложения
+    if (userRole !== UserRole.SHOP_OWNER && userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException(
+        'Только владелец магазина может изменять настройки оплаты',
+      );
     }
 
-    const settings = await this.getSettings(shopId, userRole);
+    let settings = await this.shopSettingsRepository.findOne({
+      where: { shopId },
+    });
+
+    // Если настройки не найдены, создаем их с дефолтными значениями
+    if (!settings) {
+      settings = this.shopSettingsRepository.create({
+        shopId,
+        enableSizes: true,
+        enableWeight: true,
+        enableBarcode: true,
+        enableCategories: true,
+        paymentAccountNumber: null,
+      });
+    }
 
     Object.assign(settings, updateData);
     return this.shopSettingsRepository.save(settings);
+  }
+
+  async getPaymentAccount(shopId: number): Promise<{ paymentAccountNumber: string | null }> {
+    let settings = await this.shopSettingsRepository.findOne({
+      where: { shopId },
+      select: ['paymentAccountNumber'],
+    });
+
+    // Если настройки не найдены, создаем их с дефолтными значениями
+    if (!settings) {
+      settings = this.shopSettingsRepository.create({
+        shopId,
+        enableSizes: true,
+        enableWeight: true,
+        enableBarcode: true,
+        enableCategories: true,
+        paymentAccountNumber: null,
+      });
+      settings = await this.shopSettingsRepository.save(settings);
+    }
+
+    return {
+      paymentAccountNumber: settings?.paymentAccountNumber || null,
+    };
   }
 }

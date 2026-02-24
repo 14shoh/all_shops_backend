@@ -1,10 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // Свой парсер с увеличенным лимитом (для инвентаризации с большим числом товаров)
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
+
   // Глобальная валидация
   app.useGlobalPipes(
     new ValidationPipe({
@@ -23,6 +28,6 @@ async function bootstrap() {
   const port = process.env.PORT ?? 3000;
   await app.listen(port, '0.0.0.0'); // Слушаем на всех интерфейсах для доступа с мобильных устройств
   console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`Also accessible from network: http://192.168.0.18:${port}`);
+  console.log(`Also accessible from network: http://<YOUR_PC_IP>:${port}`);
 }
 bootstrap();
