@@ -19,10 +19,12 @@ async function bootstrap() {
     }),
   );
 
-  // CORS для мобильных приложений и веб-панели
+  // CORS для мобильных приложений и веб-панели (admin_of_app с другого origin)
   app.enableCors({
     origin: true,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   const port = process.env.PORT ?? 3000;

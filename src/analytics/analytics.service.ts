@@ -73,6 +73,26 @@ export class AnalyticsService {
     const revenue = Number(parseFloat(salesAgg?.revenue ?? '0').toFixed(2));
     const salesCount = parseInt(salesAgg?.salesCount ?? '0', 10);
 
+    // Себестоимость: quantity в кг/л/шт, price за единицу
+    const cogsAgg = await this.saleItemRepository
+      .createQueryBuilder('saleItem')
+      .innerJoin('saleItem.sale', 'sale')
+      .innerJoin('saleItem.product', 'product')
+      .select(
+        'COALESCE(SUM(saleItem.quantity * product.purchasePrice), 0)',
+        'costOfGoods',
+      )
+      .where('sale.shopId = :shopId', { shopId })
+      .andWhere('sale.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
+      .getRawOne<{ costOfGoods: string }>();
+
+    const costOfGoods = Number(
+      parseFloat(cogsAgg?.costOfGoods ?? '0').toFixed(2),
+    );
+
     // Получаем расходы
     const expensesAgg = await this.expenseRepository
       .createQueryBuilder('expense')
@@ -90,14 +110,15 @@ export class AnalyticsService {
     );
     const expensesCount = parseInt(expensesAgg?.expensesCount ?? '0', 10);
 
-    // Чистая прибыль
-    const netProfit = revenue - totalExpenses;
+    // Чистая прибыль = выручка - себестоимость - расходы
+    const netProfit = revenue - costOfGoods - totalExpenses;
 
     return {
       period,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
       revenue,
+      costOfGoods,
       expenses: totalExpenses,
       netProfit: Number(netProfit.toFixed(2)),
       salesCount,
@@ -183,6 +204,7 @@ export class AnalyticsService {
         'product.category AS category',
         'product.quantity AS quantity',
         'product.purchasePrice AS purchasePrice',
+        'product.weight AS weight',
       ])
       .groupBy('product.id')
       .having('COUNT(sale.id) = 0')
@@ -193,19 +215,24 @@ export class AnalyticsService {
         category: string | null;
         quantity: number;
         purchasePrice: string;
+        weight: string | null;
       }>();
 
     return rows.map((p) => {
       const purchasePrice = Number(parseFloat(p.purchasePrice ?? '0').toFixed(2));
       const quantity = Number(p.quantity ?? 0);
+      const w = p.weight != null ? Number(p.weight) : null;
+      const isWeighed = w != null && (Math.abs(w - 1) < 0.1 || Math.abs(w - 2) < 0.1);
+      const displayQty = isWeighed ? quantity / 1000 : quantity;
       return {
         id: p.id,
         name: p.name,
         barcode: p.barcode,
         category: p.category,
         quantity,
+        weight: p.weight,
         purchasePrice,
-        totalValue: Number((purchasePrice * quantity).toFixed(2)),
+        totalValue: Number((purchasePrice * displayQty).toFixed(2)),
       };
     });
   }

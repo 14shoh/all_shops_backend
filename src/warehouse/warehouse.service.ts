@@ -18,6 +18,16 @@ export class WarehouseService {
     private shopRepository: Repository<Shop>,
   ) {}
 
+  /**
+   * Расчёт стоимости: quantity хранится в кг/л/шт, price за единицу
+   * weight=null → шт, weight=1 → кг, weight=2 → л
+   */
+  private getProductValue(product: Product): number {
+    const qty = Number(product.quantity);
+    const price = Number(product.purchasePrice);
+    return qty * price;
+  }
+
   async getWarehouseStatus(
     shopId: number,
     userRole: UserRole,
@@ -41,16 +51,12 @@ export class WarehouseService {
     });
 
     const totalProducts = products.length;
-    const totalQuantity = products.reduce(
-      (sum, product) => sum + product.quantity,
-      0,
-    );
     const totalValue = products.reduce(
-      (sum, product) => sum + product.purchasePrice * product.quantity,
+      (sum, product) => sum + this.getProductValue(product),
       0,
     );
 
-    // Группировка по категориям
+    // Группировка по категориям (value с учётом единиц)
     const categories = products.reduce((acc, product) => {
       const category = product.category || 'Без категории';
       if (!acc[category]) {
@@ -63,7 +69,7 @@ export class WarehouseService {
       }
       acc[category].count += 1;
       acc[category].quantity += product.quantity;
-      acc[category].value += product.purchasePrice * product.quantity;
+      acc[category].value += this.getProductValue(product);
       return acc;
     }, {} as Record<string, { category: string; count: number; quantity: number; value: number }>);
 
@@ -71,7 +77,7 @@ export class WarehouseService {
       shopId,
       shopName: shop.name,
       totalProducts,
-      totalQuantity,
+      totalQuantity: totalProducts, // количество SKU (нельзя суммировать шт+кг+л)
       totalValue: Number(totalValue.toFixed(2)),
       categories: Object.values(categories).map((cat) => ({
         ...cat,
@@ -82,8 +88,9 @@ export class WarehouseService {
         name: p.name,
         category: p.category,
         quantity: p.quantity,
+        weight: p.weight, // null=шт, 1=кг (qty в г), 2=л (qty в мл)
         purchasePrice: p.purchasePrice,
-        totalValue: Number((p.purchasePrice * p.quantity).toFixed(2)),
+        totalValue: Number(this.getProductValue(p).toFixed(2)),
       })),
     };
   }
